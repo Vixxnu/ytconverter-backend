@@ -44,47 +44,50 @@ def get_formats():
 
 @app.route('/api/download', methods=['POST'])
 def download_video():
-    data = request.json
-    url = data.get('url')
-    format_id = data.get('resolution')
-    mode = data.get('mode')
-
     try:
+        data = request.json
+        url = data.get('url')
+        format_id = data.get('resolution')
+        mode = data.get('mode')
+
+        print(f"URL: {url}")
+        print(f"Format ID: {format_id}")
+        print(f"Mode: {mode}")
+
         unique_id = uuid.uuid4().hex[:8]
         filename_template = f"%(title)s_{unique_id}.%(ext)s"
         output_path = os.path.join(DOWNLOAD_DIR, filename_template)
 
-        common_opts = {
-            'outtmpl': output_path,
-            'cookiefile': 'cookies.txt',
-        }
+        ydl_opts = {}
 
         if mode == 'audio':
             ydl_opts = {
-                **common_opts,
                 'format': 'bestaudio/best',
+                'outtmpl': output_path,
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
                 'merge_output_format': 'mp3',
+                'cookiefile': 'cookies.txt'
             }
 
         elif mode == 'best':
             ydl_opts = {
-                **common_opts,
                 'format': 'bestvideo+bestaudio/best',
+                'outtmpl': output_path,
                 'merge_output_format': 'mp4',
+                'cookiefile': 'cookies.txt'
             }
 
         elif mode == 'video':
             ydl_opts = {
-                **common_opts,
                 'format': f"{format_id}+bestaudio/best",
+                'outtmpl': output_path,
                 'merge_output_format': 'mp4',
+                'cookiefile': 'cookies.txt'
             }
-
         else:
             return jsonify({'error': 'Invalid mode'}), 400
 
@@ -92,11 +95,12 @@ def download_video():
             info = ydl.extract_info(url, download=True)
             downloaded_filename = ydl.prepare_filename(info)
 
+        print("Downloaded:", downloaded_filename)
         return send_file(downloaded_filename, as_attachment=True)
 
     except Exception as e:
+        print("Download Error:", str(e))
         return jsonify({'error': str(e)}), 500
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
