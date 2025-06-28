@@ -18,13 +18,12 @@ def get_formats():
         return jsonify({'error': 'URL is required'}), 400
 
     try:
-        with YoutubeDL({'quiet': True}) as ydl:
+        with YoutubeDL({'quiet': True, 'cookiefile': 'cookies.txt'}) as ydl:
             info = ydl.extract_info(url, download=False)
             formats = info.get('formats', [])
 
         resolutions = {}
         for f in formats:
-            # Accept all video formats with height info (even if they’re video-only)
             if f.get("vcodec") != "none" and f.get("height") is not None:
                 label = f"{f['height']}p"
                 if label not in resolutions:
@@ -55,10 +54,15 @@ def download_video():
         filename_template = f"%(title)s_{unique_id}.%(ext)s"
         output_path = os.path.join(DOWNLOAD_DIR, filename_template)
 
+        common_opts = {
+            'outtmpl': output_path,
+            'cookiefile': 'cookies.txt',
+        }
+
         if mode == 'audio':
             ydl_opts = {
+                **common_opts,
                 'format': 'bestaudio/best',
-                'outtmpl': output_path,
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
@@ -69,16 +73,15 @@ def download_video():
 
         elif mode == 'best':
             ydl_opts = {
+                **common_opts,
                 'format': 'bestvideo+bestaudio/best',
-                'outtmpl': output_path,
                 'merge_output_format': 'mp4',
             }
 
         elif mode == 'video':
-            # Merge selected video format with best audio
             ydl_opts = {
+                **common_opts,
                 'format': f"{format_id}+bestaudio/best",
-                'outtmpl': output_path,
                 'merge_output_format': 'mp4',
             }
 
