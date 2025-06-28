@@ -10,6 +10,21 @@ CORS(app)
 DOWNLOAD_DIR = 'downloads'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+DEFAULT_YDL_ARGS = {
+    'quiet': True,
+    'cookiefile': 'cookies.txt',
+    'extractor_args': {
+        'youtube': [
+            'client=mweb',  # Use mobile web client
+            # Optional: add visitor_data if needed
+            # 'player_skip=webpage,configs',
+        ]
+    },
+    'sleep_interval_requests': 5,
+    'ratelimit': 1_000_000,  # in bytes/sec (optional)
+}
+
+
 @app.route('/api/formats', methods=['POST'])
 def get_formats():
     data = request.json
@@ -18,7 +33,7 @@ def get_formats():
         return jsonify({'error': 'URL is required'}), 400
 
     try:
-        with YoutubeDL({'quiet': True, 'cookiefile': 'cookies.txt'}) as ydl:
+        with YoutubeDL(DEFAULT_YDL_ARGS) as ydl:
             info = ydl.extract_info(url, download=False)
             formats = info.get('formats', [])
 
@@ -39,7 +54,7 @@ def get_formats():
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f"Failed to fetch formats: {str(e)}"}), 500
 
 
 @app.route('/api/download', methods=['POST'])
@@ -50,44 +65,32 @@ def download_video():
         format_id = data.get('resolution')
         mode = data.get('mode')
 
-        print(f"URL: {url}")
-        print(f"Format ID: {format_id}")
-        print(f"Mode: {mode}")
-
         unique_id = uuid.uuid4().hex[:8]
         filename_template = f"%(title)s_{unique_id}.%(ext)s"
         output_path = os.path.join(DOWNLOAD_DIR, filename_template)
 
-        ydl_opts = {}
+        ydl_opts = DEFAULT_YDL_ARGS.copy()
+        ydl_opts['outtmpl'] = output_path
 
         if mode == 'audio':
-            ydl_opts = {
+            ydl_opts.update({
                 'format': 'bestaudio/best',
-                'outtmpl': output_path,
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
-                'merge_output_format': 'mp3',
-                'cookiefile': 'cookies.txt'
-            }
+                'merge_output_format': 'mp3'
+            })
 
         elif mode == 'best':
-            ydl_opts = {
-                'format': 'bestvideo+bestaudio/best',
-                'outtmpl': output_path,
-                'merge_output_format': 'mp4',
-                'cookiefile': 'cookies.txt'
-            }
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['merge_output_format'] = 'mp4'
 
         elif mode == 'video':
-            ydl_opts = {
-                'format': f"{format_id}+bestaudio/best",
-                'outtmpl': output_path,
-                'merge_output_format': 'mp4',
-                'cookiefile': 'cookies.txt'
-            }
+            ydl_opts['format'] = f"{format_id}+bestaudio/best"
+            ydl_opts['merge_output_format'] = 'mp4'
+
         else:
             return jsonify({'error': 'Invalid mode'}), 400
 
@@ -95,12 +98,11 @@ def download_video():
             info = ydl.extract_info(url, download=True)
             downloaded_filename = ydl.prepare_filename(info)
 
-        print("Downloaded:", downloaded_filename)
         return send_file(downloaded_filename, as_attachment=True)
 
     except Exception as e:
-        print("Download Error:", str(e))
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f"Download failed: {str(e)}"}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
